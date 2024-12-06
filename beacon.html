@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bluetooth Beacon Scanner</title>
+    <style>
+        /* Center the page */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Style the round green button */
+        .sign-in-button {
+            display: none;  /* Initially hide the button */
+            width: 10cm;
+            height: 10cm;
+            background-color: green;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            border: none;
+            text-align: center;
+            line-height: 10cm;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 128, 0, 0.5);
+            transition: background-color 0.3s;
+        }
+
+        .sign-in-button:hover {
+            background-color: darkgreen;
+        }
+        
+        /* Basic styling for status and info list */
+        #status {
+            margin-top: 20px;
+            font-size: 18px;
+        }
+
+        #info-list {
+            margin-top: 10px;
+            font-size: 16px;
+        }
+
+        #startButton {
+            font-size: 18px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Bluetooth Beacon Scanner</h1>
+    <button id="startButton">Start Bluetooth Scan</button>
+    <p id="status">Status: Ready to scan.</p>
+    <ul id="info-list"></ul>
+
+    <!-- Sign In Button -->
+    <button id="signInButton" class="sign-in-button" onclick="signIn()">Sign In</button>
+
+    <script>
+        // Variable to store the connected device
+let connectedDevice = null;
+
+// Variable to track if the "already connected" message has been shown
+let alreadyConnectedMessageShown = false;
+
+// Add event listener to start the Bluetooth scan only when the button is clicked
+document.getElementById('startButton').addEventListener('click', () => {
+    // Check if a device is already connected
+    if (connectedDevice && connectedDevice.gatt.connected) {
+        if (!alreadyConnectedMessageShown) {
+            // Show the message only once
+            updateStatusHTML(`Device "${connectedDevice.name}" is already connected.`);
+            addInfoToHTML(`Device "${connectedDevice.name}" is already connected. No need to scan again.`);
+            alreadyConnectedMessageShown = true; // Set the flag to true
+        }
+    } else {
+        // Reset UI elements when scan is started again
+        resetPage();
+
+        // Request Bluetooth permission and start the scan on button click
+        requestBluetoothPermission().then((device) => {
+            if (device) {
+                // If a device is found and permission is granted, start scanning
+                startScan(device);
+            } else {
+                // If the device is null, the user probably canceled, handle accordingly
+                updateStatusHTML('Bluetooth permission request was canceled.');
+                addInfoToHTML('Error: Bluetooth permission request canceled.');
+            }
+        }).catch((error) => {
+            console.error('Bluetooth permission denied:', error);
+            updateStatusHTML('Bluetooth permission denied. Please enable Bluetooth and try again.');
+            addInfoToHTML('Error: Bluetooth permission denied.');
+        });
+    }
+});
+
+// Function to request Bluetooth permission (this will prompt the user)
+async function requestBluetoothPermission() {
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ name: 'RFstar_5016' }],
+            optionalServices: ['0000180a-0000-1000-8000-00805f9b34fb']
+        });
+
+        // Bluetooth permission granted, update the status and display the device
+        console.log('Bluetooth permission granted!', device);
+        updateStatusHTML('Bluetooth permission granted!');
+        addInfoToHTML(`Device Found: ${device.name || 'Unknown Device'}`);
+
+        return device;  // Return the device object for further actions if needed
+    } catch (error) {
+        console.error('Bluetooth permission denied or not supported:', error);
+
+        // If the error is due to the user canceling the request
+        if (error.name === 'AbortError') {
+            updateStatusHTML('Bluetooth permission request was canceled.');
+            addInfoToHTML('Error: Bluetooth permission request canceled.');
+        } else {
+            updateStatusHTML('Bluetooth permission denied or not supported.');
+            addInfoToHTML('Error: Bluetooth permission denied or not supported.');
+        }
+
+        return null;  // Return null if no device is found or permission is denied
+    }
+}
+
+// Function to start scanning for the device and retrieving services
+async function startScan(device) {
+    if (!device) {
+        console.log("No device to connect to.");
+        return;
+    }
+
+    try {
+        // Attempt to connect to the device
+        const server = await device.gatt.connect();
+        connectedDevice = device;  // Save the connected device
+        alreadyConnectedMessageShown = false; // Reset the flag for new connections
+        addInfoToHTML(`Connected to: ${device.name}`);
+        updateStatusHTML(`Connected to Beacon: ${device.name}`);
+
+        // Show the Sign-In button after successful connection
+        document.getElementById('signInButton').style.display = 'inline-block';
+
+        // Optionally get services if needed
+        const service = await server.getPrimaryService('0000180a-0000-1000-8000-00805f9b34fb');
+        if (service) {
+            updateStatusHTML('Service Found!');
+            addInfoToHTML('Service Found!');
+        }
+    } catch (error) {
+        // Handle errors during the connection or service retrieval process
+        console.error('Error during scan or connection:', error);
+        updateStatusHTML('Error connecting to the device or finding service.');
+        addInfoToHTML('Error: Bluetooth connection failed.');
+    }
+}
+
+
+// Function to reset the page to its original state
+function resetPage() {
+    // Reset the status text to ready for scan
+    updateStatusHTML('Status: Ready to scan.');
+
+    // Clear the info list
+    const infoList = document.getElementById('info-list');
+    if (infoList) {
+        infoList.innerHTML = '';  // Clear previous information
+    }
+
+    // Hide the sign-in button again
+    const signInButton = document.getElementById('signInButton');
+    if (signInButton) {
+        signInButton.style.display = 'none';
+    }
+
+    // Reset the already connected message flag
+    alreadyConnectedMessageShown = false;
+}
+
+// Helper function to update the status text
+function updateStatusHTML(message) {
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = message;
+    }
+}
+
+// Helper function to add info messages to the info list
+function addInfoToHTML(message) {
+    const infoList = document.getElementById('info-list');
+    if (infoList) {
+        const listItem = document.createElement('li');
+        listItem.textContent = message;
+        infoList.appendChild(listItem);
+    }
+}
+
+
+// Function to handle Sign In button click (Placeholder for your sign-in logic)
+function signIn() {
+    alert("Sign In Successfully!");
+    // Add your sign-in logic here
+}
+    </script>
+</body>
+</html>
